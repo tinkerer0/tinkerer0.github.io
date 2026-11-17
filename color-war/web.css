@@ -1,0 +1,64 @@
+/* 웹판 전용(tools/build-web.js가 app.css 뒤에 붙인다). 앱에는 들어가지 않는다. */
+.web #bHaptic, .web #bHaptic2 { display: none; }
+
+/* 600px 이상에서 app.css가 띄우는 폰 틀을 끄고 창 전체를 쓴다 */
+@media (min-width: 600px) {
+  :root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+  html { display: block; background: var(--bg); }
+  body { width: auto; height: 100%; border-radius: 0; box-shadow: none; transform: none; }
+}
+
+/* 넓은 가로 화면: 판은 가운데 크게, 시작 화면은 가로로 */
+@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+  .screen { padding: 28px 40px; }
+  button:hover { opacity: .85; }
+
+  /* 시작 화면: 로고 / 왼쪽 카드 · 시작 · 오른쪽 카드 / 주사위 */
+  #lobby { align-items: center; }
+  .lobbyTop { width: min(1240px, 100%); margin-bottom: 2vh; }
+  #mark { height: clamp(56px, 8vh, 76px); max-width: 600px; margin: 0 auto 0 4px; }
+  #mark span { font-size: 46px; }
+  #match { width: min(1240px, 100%); flex-direction: row; align-items: center; justify-content: center; gap: 0; margin-top: 0; }
+  .side { flex: 1; flex-direction: column; text-align: center; padding: 3vh 24px; gap: 2vh; }
+  .side.right { flex-direction: column; text-align: center; }
+  .side canvas { width: min(34vh, 26vw, 400px); height: min(34vh, 26vw, 400px); }
+  .side div { align-items: center; width: 100%; }
+  .side b { font-size: 52px; }
+  .side small { font-size: 30px; }
+  .side em { font-size: 19px; }
+  #vs { width: 200px; height: auto; margin: 0; flex: none; }
+  #vs::before { left: -10px; right: -10px; }
+  #bStart { width: 140px; height: 72px; }
+  #bStart svg { width: 30px; height: 30px; }
+  #match { flex: none; margin: auto 0 0; }
+  #actions { margin: 3vh 0 auto; }
+  #bRandom { width: clamp(92px, 14vh, 132px); height: clamp(92px, 14vh, 132px); }
+  #bRandom svg { width: 44%; height: 44%; }
+  #bSettings { width: 60px; height: 60px; }
+
+  /* 주인공 고르기: 가운데 한 줄 */
+  #picker > * { width: min(900px, 100%, calc((100vh - 290px) * 1.39)); margin-left: auto; margin-right: auto; } /* 짧은 창에서도 색이 스크롤 없이 다 보이게 폭을 줄인다 */
+  #abilities { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  #swatches { grid-template-columns: repeat(14, minmax(0, 1fr)); }
+  #swatches { grid-auto-rows: max-content; }
+
+  /* 대결: 캔버스(1720x1080)를 창에 맞춘다. 멈춤 단추는 오른쪽 기둥 색 면 옆(app.js placeMenuBtn) */
+  #play { padding: 0; }
+  #stage { align-items: center; }
+  #bMenu { width: 52px; height: 52px; border-width: 2.5px; }
+  #bMenu svg { width: 22px; height: 22px; }
+
+  /* 랜덤 대결 소개: 카드 둘을 가로로 */
+  #intro { flex-direction: row; align-items: center; justify-content: center; gap: 48px; padding: 0 6vw; }
+  #intro .who, #intro .who.b { flex: 0 1 440px; flex-direction: column; text-align: center; padding: 4vh 28px; gap: 2.4vh; }
+  #intro .who canvas { width: min(32vh, 300px); height: min(32vh, 300px); }
+  #intro .who div { align-items: center; width: 100%; }
+  #intro .who b { font-size: 56px; }
+  #intro .who small { font-size: 30px; }
+  #intro i { font-size: 84px; }
+
+  /* 설정: 아래에서 올라오는 판 대신 가운데 창 */
+  .sheet { left: 50%; right: auto; bottom: 50%; width: 460px; border: 2.5px solid var(--rim); border-radius: 22px; padding: 26px 24px;
+    transform: translate(-50%, 50%); transition: opacity .2s; }
+  .sheet[hidden] { transform: translate(-50%, 50%); opacity: 0; transition: opacity .2s, visibility 0s .2s; }
+}

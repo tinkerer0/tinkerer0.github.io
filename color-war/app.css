@@ -1,0 +1,127 @@
+/* 판 그림체와 같은 재료: 어두운 바탕, 색 면, 흰 경계선, 굵은 컨덴스드 글씨, 둥근 테 + 흰 기호 단추 */
+:root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); --bg: #04040a; --ink: #f4f4f8; --dim: rgba(255,255,255,.55); --rim: rgba(255,255,255,.22); --tile: #10101a; --a: #ff3a2e; --b: #19d3f0; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; overscroll-behavior: none; touch-action: manipulation;
+  font: 800 15px/1.15 "Avenir Next Condensed", "Avenir Next", -apple-system, sans-serif; -webkit-text-size-adjust: 100%; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; touch-action: manipulation;
+  transition: transform .14s cubic-bezier(.3,1.7,.5,1), opacity .15s, border-color .15s, background .15s; }
+button:active { transform: scale(.9); }
+svg { fill: currentColor; }
+
+.screen { position: fixed; inset: 0; display: flex; flex-direction: column; padding: calc(var(--sat) + 8px) 16px calc(var(--sab) + 10px);
+  transition: opacity .28s ease, transform .28s ease; }
+.screen[hidden] { display: flex; opacity: 0; transform: scale(.97); pointer-events: none; visibility: hidden; transition: opacity .28s ease, transform .28s ease, visibility 0s .28s; }
+
+.round { width: 52px; height: 52px; border-radius: 50%; border: 2.5px solid var(--rim); display: grid; place-items: center; flex: none; }
+.round svg { width: 24px; height: 24px; }
+.round.small { width: 44px; height: 44px; }
+.round.small svg { width: 20px; height: 20px; }
+.i-off, .off > .i-on { display: none; }
+.off > .i-off { display: block; }
+
+/* 시작 전 화면 */
+.lobbyTop { display: flex; align-items: center; gap: 12px; flex: none; }
+#mark { flex: 1; display: flex; height: 52px; transform: skewX(-12deg); margin: 0 4px; }
+#mark span { display: grid; place-items: center; font-size: 30px; font-weight: 900; letter-spacing: .12em; color: #05050a; transition: background .3s; }
+#markA { flex: 1.1; background: var(--a); }
+#markB { flex: 0.9; background: var(--b); margin-left: 6px; }
+#match { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; margin-top: 14px; }
+.side { display: flex; align-items: center; gap: 14px; text-align: left; padding: 12px; border-radius: 18px; background: var(--tile); border: 2.5px solid var(--rim); min-height: 0; }
+.side.right { flex-direction: row-reverse; text-align: right; }
+.side canvas { width: min(34vw, 136px); height: min(34vw, 136px); border-radius: 14px; flex: none; }
+.side div { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.side b { font-size: 28px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side small { font-size: 19px; }
+.side em { font-style: normal; font-size: 14px; color: var(--dim); }
+#vs { position: relative; height: 72px; margin: 18px 0; display: grid; place-items: center; }
+#vs::before { content: ""; position: absolute; left: 8%; right: 8%; top: 50%; height: 4px; background: linear-gradient(90deg, var(--a) 0 48%, transparent 48% 52%, var(--b) 52%); transform: translateY(-50%) rotate(-4deg); }
+/* 시작 단추: 위쪽 COLOR | WAR 배너와 같은 기울어진 두 색 면 */
+#bStart { position: relative; width: 96px; height: 50px; display: grid; place-items: center; color: #05050a; }
+#bStart::before { content: ""; position: absolute; inset: 0; transform: skewX(-12deg); background: linear-gradient(90deg, var(--a) 0 50%, var(--b) 50%); box-shadow: 0 0 0 3px var(--ink); transition: background .3s; }
+#bStart svg { position: relative; width: 24px; height: 24px; margin-left: 3px; }
+#times { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+#times button { height: 46px; border-radius: 12px; border: 2.5px solid var(--rim); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 19px; color: var(--dim); }
+#times svg { width: 18px; height: 18px; }
+#times button.on { border-color: var(--ink); color: var(--ink); background: rgba(255,255,255,.07); }
+#actions { display: flex; align-items: center; justify-content: center; gap: 24px; margin: 18px 0 8px; flex: none; }
+#bRandom { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; color: #05050a;
+  background: linear-gradient(115deg, var(--a) 0 52%, #fff 52% 54%, var(--b) 54%); box-shadow: 0 0 0 3px var(--ink); transition: transform .14s cubic-bezier(.3,1.7,.5,1), background .3s; }
+#bRandom svg { width: 46px; height: 46px; }
+
+/* 주인공 고르기 */
+#picker .top { display: flex; justify-content: space-between; flex: none; }
+#pickHero { display: flex; align-items: center; gap: 14px; margin: 10px 0 12px; flex: none; }
+#pickHero canvas { width: 96px; height: 96px; border-radius: 16px; flex: none; }
+#pickHero div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#pickHero b { font-size: 30px; font-weight: 900; }
+#pickHero small { font-size: 20px; }
+#pickHero em { font-style: normal; font-size: 15px; color: var(--dim); }
+#abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; flex: none; }
+#abilities button { aspect-ratio: 1; border-radius: 14px; border: 2.5px solid var(--rim); display: grid; place-items: center; }
+#abilities button.on { border-color: var(--ink); background: rgba(255,255,255,.08); }
+#abilities canvas { width: 70%; height: 70%; }
+#swatches { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); grid-auto-rows: max-content; gap: 5px; margin-top: 12px; align-content: start; padding: 2px; }
+#swatches button { aspect-ratio: 1; min-height: 34px; clip-path: polygon(25% 3%, 75% 3%, 99% 50%, 75% 97%, 25% 97%, 1% 50%); }
+#swatches button.on { outline: none; box-shadow: inset 0 0 0 4px #fff; }
+#toast { position: absolute; left: 50%; bottom: calc(var(--sab) + 24px); transform: translateX(-50%); max-width: 88%; padding: 10px 16px; border-radius: 12px; background: var(--ink); color: #05050a; font-size: 15px; text-align: center; transition: opacity .2s; pointer-events: none; }
+#toast[hidden] { display: block; opacity: 0; visibility: hidden; transition: opacity .2s, visibility 0s .2s; }
+#swatches button.taken { opacity: .18; transform: scale(.8); }
+
+/* 대결 화면 */
+/* 아래 64pt는 배너 광고 자리 */
+#play { padding: var(--sat) 0 calc(var(--sab) + var(--ad, 64px)); }
+#stage { flex: 1; min-height: 0; display: flex; align-items: flex-start; justify-content: center; }
+#stage canvas { width: auto; height: auto; max-width: 100%; max-height: 100%; display: block; }
+/* 멈춤 단추는 판 위 빈 띠(대결 배너 위)에 얹어 위쪽 공백을 줄인다. 아래 공간은 광고 자리로 비워 둔다 */
+#play .top.end { position: absolute; z-index: 2; }
+#bMenu { position: relative; width: 34px; height: 34px; border-width: 2px; }
+#bMenu svg { width: 15px; height: 15px; }
+#bMenu::after { content: ""; position: absolute; inset: -6px; }
+#menu { position: absolute; inset: 0; background: rgba(4,4,10,.72); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; transition: opacity .2s; }
+#menu[hidden] { display: flex; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .2s, visibility 0s .2s; }
+#menu .row { display: flex; align-items: center; gap: 26px; }
+.round.big { width: 92px; height: 92px; border-color: var(--ink); }
+.round.big svg { width: 40px; height: 40px; }
+
+/* 랜덤 대결 소개: 두 카드가 양옆에서 들어오고 가운데 VS */
+#intro { position: absolute; inset: 0; z-index: 3; background: rgba(4,4,10,.88); display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 0 22px; transition: opacity .25s; }
+#intro[hidden] { display: flex; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .25s, visibility 0s .25s; }
+#intro .who { display: flex; align-items: center; gap: 16px; padding: 14px; border-radius: 18px; background: var(--tile); border: 2.5px solid var(--rim); transform: translateX(-120%); transition: transform .38s cubic-bezier(.2,1.3,.4,1); }
+#intro .who.b { flex-direction: row-reverse; text-align: right; transform: translateX(120%); }
+#intro.on .who { transform: none; }
+#intro .who canvas { width: 120px; height: 120px; border-radius: 16px; flex: none; }
+#intro .who div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#intro .who b { font-size: 34px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#intro .who small { font-size: 22px; }
+#intro i { align-self: center; font-style: normal; font-size: 46px; font-weight: 900; letter-spacing: .08em; transform: scale(0) skewX(-12deg); transition: transform .3s .18s cubic-bezier(.3,1.7,.5,1); }
+#intro.on i { transform: scale(1) skewX(-12deg); }
+
+/* 규칙 */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; padding: 22px 20px calc(20px + var(--sab)); background: var(--tile); border-top: 2.5px solid var(--rim);
+  border-radius: 22px 22px 0 0; display: flex; flex-direction: column; align-items: center; gap: 16px; transition: transform .25s ease; }
+.sheet[hidden] { display: flex; transform: translateY(110%); pointer-events: none; visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
+/* 설정 뒤 어두운 막: 누르면 닫힌다 */
+#scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); transition: opacity .25s; }
+#scrim[hidden] { display: block; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .25s, visibility 0s .25s; }
+.sheet .row { display: flex; gap: 18px; }
+.sheet ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.sheet li { display: flex; gap: 12px; align-items: center; font-size: 17px; font-weight: 700; }
+.sheet .meta { margin: 0; font-size: 14px; font-weight: 700; color: var(--dim); }
+.sheet .meta a { color: var(--ink); }
+.sheet li svg { width: 22px; height: 22px; flex: none; }
+
+#loading { position: fixed; inset: 0; background: var(--bg); display: grid; place-content: center; gap: 18px; justify-items: center; transition: opacity .35s; z-index: 9; }
+#loading b { font-size: 40px; font-weight: 900; letter-spacing: .12em; }
+#loading i { width: 160px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+#loading s { display: block; height: 100%; width: 30%; background: var(--ink); animation: ld 1s ease-in-out infinite; }
+@keyframes ld { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+#loading.gone { opacity: 0; pointer-events: none; }
+/* 데스크톱 브라우저에서는 실제 폰 크기(iPhone 13·14, 390×844pt)의 틀 안에 보여 준다 */
+@media (min-width: 600px) {
+  :root { --sat: 47px; --sab: 34px; }
+  html { display: grid; place-items: center; background: #1b1b22; }
+  body { width: 390px; height: 844px; flex: none; position: relative; border-radius: 48px; overflow: hidden; box-shadow: 0 0 0 10px #000, 0 0 0 12px #3a3a44;
+    transform: scale(var(--fit, 1)); transform-origin: center; }
+}
+@media (max-height: 700px) { #bRandom { width: 84px; height: 84px; } .side canvas { width: 100px; height: 100px; } #mark { height: 44px; } }
+@media (prefers-reduced-motion: reduce) { button:active { transform: none; } .screen[hidden], .sheet[hidden] { transform: none; } .sheet, .sheet[hidden] { transition: opacity .2s, visibility 0s .2s; } .sheet[hidden] { opacity: 0; } #loading s { animation: none; width: 100%; } }
