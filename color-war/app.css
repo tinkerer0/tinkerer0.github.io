@@ -1,5 +1,5 @@
 /* 판 그림체와 같은 재료: 어두운 바탕, 색 면, 흰 경계선, 굵은 컨덴스드 글씨, 둥근 테 + 흰 기호 단추 */
-:root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); --bg: #04040a; --ink: #f4f4f8; --dim: rgba(255,255,255,.55); --rim: rgba(255,255,255,.22); --tile: #10101a; --a: #ff3a2e; --b: #19d3f0; }
+:root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); --bg: #04040a; --bg-rgb: 4,4,10; --ink: #f4f4f8; --dim: rgba(255,255,255,.55); --rim: rgba(255,255,255,.22); --tile: #10101a; --a: #ff3a2e; --b: #19d3f0; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; overscroll-behavior: none; touch-action: manipulation;
   font: 800 15px/1.15 "Avenir Next Condensed", "Avenir Next", -apple-system, sans-serif; -webkit-text-size-adjust: 100%; }
@@ -11,6 +11,7 @@ svg { fill: currentColor; }
 .screen { position: fixed; inset: 0; display: flex; flex-direction: column; padding: calc(var(--sat) + 8px) 16px calc(var(--sab) + 10px);
   transition: opacity .28s ease, transform .28s ease; }
 .screen[hidden] { display: flex; opacity: 0; transform: scale(.97); pointer-events: none; visibility: hidden; transition: opacity .28s ease, transform .28s ease, visibility 0s .28s; }
+.screen.instant { transition: none; }
 
 .round { width: 52px; height: 52px; border-radius: 50%; border: 2.5px solid var(--rim); display: grid; place-items: center; flex: none; }
 .round svg { width: 24px; height: 24px; }
@@ -43,6 +44,11 @@ svg { fill: currentColor; }
 #times button { height: 46px; border-radius: 12px; border: 2.5px solid var(--rim); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 19px; color: var(--dim); }
 #times svg { width: 18px; height: 18px; }
 #times button.on { border-color: var(--ink); color: var(--ink); background: rgba(255,255,255,.07); }
+#themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; width: 100%; }
+#themes[hidden] { display: none; }
+#themes button { height: 46px; border-radius: 12px; border: 2.5px solid var(--rim); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 17px; color: var(--dim); }
+#themes button.on { border-color: var(--ink); color: var(--ink); background: rgba(255,255,255,.07); }
+#themes i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid; flex: none; }
 #actions { display: flex; align-items: center; justify-content: center; gap: 24px; margin: 18px 0 8px; flex: none; }
 #bRandom { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; color: #05050a;
   background: linear-gradient(115deg, var(--a) 0 52%, #fff 52% 54%, var(--b) 54%); box-shadow: 0 0 0 3px var(--ink); transition: transform .14s cubic-bezier(.3,1.7,.5,1), background .3s; }
@@ -77,24 +83,24 @@ svg { fill: currentColor; }
 #bMenu { position: relative; width: 34px; height: 34px; border-width: 2px; }
 #bMenu svg { width: 15px; height: 15px; }
 #bMenu::after { content: ""; position: absolute; inset: -6px; }
-#menu { position: absolute; inset: 0; background: rgba(4,4,10,.72); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; transition: opacity .2s; }
+#menu { position: absolute; inset: 0; background: rgba(var(--bg-rgb),.72); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; transition: opacity .2s; }
 #menu[hidden] { display: flex; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .2s, visibility 0s .2s; }
 #menu .row { display: flex; align-items: center; gap: 26px; }
 .round.big { width: 92px; height: 92px; border-color: var(--ink); }
 .round.big svg { width: 40px; height: 40px; }
 
 /* 랜덤 대결 소개: 두 카드가 양옆에서 들어오고 가운데 VS */
-#intro { position: absolute; inset: 0; z-index: 3; background: rgba(4,4,10,.88); display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 0 22px; transition: opacity .25s; }
+/* 랜덤 대결 소개: 화면을 두 팀 색으로 반반(위 A·아래 B) 채우고, 화면 너비 80%의 카드 둘과 큰 VS를 가운데에.
+   처음부터 다 보인다(나타날 때 움직임·페이드 없음). 사라질 때만 짧게 흐려진다. --ia/--ib는 app.js showIntro가 넣고, 긴 이름 글씨 줄이기도 거기서 한다 */
+#intro { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5vh;
+  background: linear-gradient(to bottom, var(--ia) 50%, var(--ib) 50%); transition: none; }
 #intro[hidden] { display: flex; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .25s, visibility 0s .25s; }
-#intro .who { display: flex; align-items: center; gap: 16px; padding: 14px; border-radius: 18px; background: var(--tile); border: 2.5px solid var(--rim); transform: translateX(-120%); transition: transform .38s cubic-bezier(.2,1.3,.4,1); }
-#intro .who.b { flex-direction: row-reverse; text-align: right; transform: translateX(120%); }
-#intro.on .who { transform: none; }
-#intro .who canvas { width: 120px; height: 120px; border-radius: 16px; flex: none; }
-#intro .who div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-#intro .who b { font-size: 34px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#intro .who small { font-size: 22px; }
-#intro i { align-self: center; font-style: normal; font-size: 46px; font-weight: 900; letter-spacing: .08em; transform: scale(0) skewX(-12deg); transition: transform .3s .18s cubic-bezier(.3,1.7,.5,1); }
-#intro.on i { transform: scale(1) skewX(-12deg); }
+#intro .who { width: 80vw; display: flex; flex-direction: column; align-items: center; gap: 1.2vh; padding: 2.4vh 4vw; border-radius: 26px; background: var(--tile); box-shadow: 0 10px 34px rgba(0,0,0,.35); text-align: center; }
+#intro .who canvas { width: min(30vw, 19vh); height: min(30vw, 19vh); border-radius: 20px; flex: none; }
+#intro .who div { display: flex; flex-direction: column; align-items: center; gap: .6vh; width: 100%; min-width: 0; }
+#intro .who b { font-size: min(13vw, 7.5vh); line-height: 1; font-weight: 900; white-space: nowrap; }
+#intro .who small { font-size: min(6vw, 3.4vh); color: var(--dim); }
+#intro i { font-style: normal; font-size: min(22vw, 11vh); line-height: .9; font-weight: 900; letter-spacing: .04em; color: #05050a; transform: skewX(-12deg); }
 
 /* 규칙 */
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; padding: 22px 20px calc(20px + var(--sab)); background: var(--tile); border-top: 2.5px solid var(--rim);

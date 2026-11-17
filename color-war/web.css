@@ -48,14 +48,13 @@
   #bMenu { width: 52px; height: 52px; border-width: 2.5px; }
   #bMenu svg { width: 22px; height: 22px; }
 
-  /* 랜덤 대결 소개: 카드 둘을 가로로 */
-  #intro { flex-direction: row; align-items: center; justify-content: center; gap: 48px; padding: 0 6vw; }
-  #intro .who, #intro .who.b { flex: 0 1 440px; flex-direction: column; text-align: center; padding: 4vh 28px; gap: 2.4vh; }
-  #intro .who canvas { width: min(32vh, 300px); height: min(32vh, 300px); }
-  #intro .who div { align-items: center; width: 100%; }
-  #intro .who b { font-size: 56px; }
-  #intro .who small { font-size: 30px; }
-  #intro i { font-size: 84px; }
+  /* 랜덤 대결 소개: 왼쪽 A·오른쪽 B 반반, 카드 둘과 VS를 합쳐 화면 너비 80% */
+  #intro { flex-direction: row; gap: 2.5vw; background: linear-gradient(to right, var(--ia) 50%, var(--ib) 50%); }
+  #intro .who { width: calc((80vw - 5vw - min(12vw, 20vh)) / 2); padding: 4vh 2vw; gap: 2.4vh; }
+  #intro .who canvas { width: min(34vh, 20vw); height: min(34vh, 20vw); }
+  #intro .who b { font-size: min(6.5vw, 11vh); }
+  #intro .who small { font-size: min(2.6vw, 4.4vh); }
+  #intro i { width: min(12vw, 20vh); text-align: center; font-size: min(12vw, 20vh); }
 
   /* 설정: 아래에서 올라오는 판 대신 가운데 창 */
   .sheet { left: 50%; right: auto; bottom: 50%; width: 460px; border: 2.5px solid var(--rim); border-radius: 22px; padding: 26px 24px;

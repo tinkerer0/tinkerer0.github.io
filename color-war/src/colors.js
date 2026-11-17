@@ -1,4 +1,7 @@
 // 색 목록과 대결 짝 고르기. 어두운 판 위에서 보이고, 배너의 어두운 글자가 읽히는 밝기의 색만 둔다.
+// 새 색 넣기: RAW에 `이름 rrggbb`를 아무 데나 쉼표로 추가 → npm test(밝기·중복·짝 수 검사) → 끝.
+// 고르기 화면은 COLOR_ORDER(색상환 순서)로 저절로 정렬되고, 웹 설명의 색 개수도 저절로 바뀐다.
+// 이름은 대문자 영어 한 단어(배너·카드에 그대로 보인다). 색을 빼면 그 색을 고른 저장값은 없으니 빼도 되지만, 이름을 바꾸지는 않는다.
 const RAW = `
 EMBER ff3a2e, CORAL ff6f61, SCARLET ff2449, CHERRY ff3366, ROSE ff5e9c, FLAMINGO ff8fb8, BUBBLEGUM ff7ad9,
 HIBISCUS ff2e7e, WATERMELON ff4f6d, SALMON ff8a75, BLUSH ffa3b5, MARIGOLD ff8a1f, TANGERINE ff9f1c, PUMPKIN ff7518,
@@ -22,6 +25,14 @@ const lab = (hex) => {
   const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
   return [116 * f(Y) - 16, 500 * (f(X) - f(Y)), 200 * (f(Y) - f(Z))];
 };
+// 고르기 화면 순서: 빨강부터 색상환을 따라 돌고, 채도가 낮은 색(은색·모래 등)은 맨 끝에 밝기 순으로
+export const COLOR_ORDER = Object.keys(COLORS).map((name) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(COLORS[name].slice(i, i + 2), 16) / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
+  let h = 0;
+  if (c) h = mx === r ? ((g - b) / c + 6) % 6 : mx === g ? (b - r) / c + 2 : (r - g) / c + 4;
+  return { name, key: c / mx < 0.3 ? 100 + (1 - mx) : (h + 0.15) % 6 }; // 0.15: 분홍빛 빨강까지 빨강 무리 맨 앞에 둔다
+}).sort((x, y) => x.key - y.key).map((x) => x.name);
 export const colorDistance = (a, b) => { const p = lab(COLORS[a]), q = lab(COLORS[b]); return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); };
 export const MIN_PAIR_DISTANCE = 55;
 

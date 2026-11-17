@@ -1,5 +1,6 @@
 // 캔버스 렌더러: 어두운 네온 톤의 액자형 판 + 모양 있는 유닛·궤적·빔 + 카드형 HUD. 1080x1920 세로 영상 기준.
 import { ABILITIES, COLORS, LOCK_SECONDS } from './sim.js';
+import { themeOf } from './themes.js';
 
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 const FONT = '"Avenir Next Condensed", "Avenir Next", "Helvetica Neue", Arial, sans-serif';
@@ -42,7 +43,7 @@ export function polygon(ctx, shape, x, y, ang, size) {
 
 // 칸 모양: 씨앗 점의 보로노이 다각형(판 사각형으로 자름). 변마다 맞닿은 칸 번호(-1은 판 테두리)를 붙인다.
 // 판(map)마다 한 번만 만든다. 대결 계산의 픽셀 칸(labels)도 같은 씨앗 점으로 나눈 것이라 경계가 겹친다.
-function cellShapes(map) {
+export function cellShapes(map) {
   if (map.shapes) return map.shapes;
   const { W, H, N, sx, sy } = map, polys = [], edges = [];
   for (let i = 0; i < N; i++) {
@@ -83,7 +84,8 @@ export function createRenderer(canvas, game, opts = {}) {
   const width = LY.width || 1080;
   if (canvas.width !== width) canvas.width = width;
   const ctx = canvas.getContext('2d');
-  const col = [[20, 20, 28], hex(COLORS[cfg.a.color]), hex(COLORS[cfg.b.color])];
+  const TH = themeOf(opts.theme), BG = hex(TH.bg); // 테마: 바탕·빈 칸·경계선(themes.js)
+  const col = [TH.empty, hex(COLORS[cfg.a.color]), hex(COLORS[cfg.b.color])];
   const hexc = [null, COLORS[cfg.a.color], COLORS[cfg.b.color]];
   const prevOwner = Uint8Array.from(game.owner);
   const flash = new Float32Array(N);
@@ -160,8 +162,8 @@ export function createRenderer(canvas, game, opts = {}) {
       ctx.stroke(path);
     }
     for (const t of [1, 2]) { const c = col[t]; ctx.strokeStyle = rgb(c[0] * 0.4 + 150, c[1] * 0.4 + 150, c[2] * 0.4 + 150); ctx.stroke(shieldP[t]); }
-    ctx.strokeStyle = 'rgb(235,245,255)'; ctx.stroke(light);
-    ctx.strokeStyle = LY.overlay ? 'rgb(250,250,252)' : 'rgb(245,245,250)'; ctx.stroke(white);
+    ctx.strokeStyle = rgb(...TH.lock); ctx.stroke(light);
+    ctx.strokeStyle = LY.overlay ? 'rgb(250,250,252)' : rgb(...TH.line); ctx.stroke(white);
     ctx.restore();
   }
 
@@ -338,7 +340,7 @@ export function createRenderer(canvas, game, opts = {}) {
     if (!game.over) return;
     const w = game.winner, color = hexc[w], name = w === 1 ? cfg.a.color : cfg.b.color;
     const k = Math.min(1, (now - game.endT) / 0.35);
-    ctx.fillStyle = `rgba(4,4,10,${(LY.overlay ? 0.45 : 0.62) * k})`; ctx.fillRect(PX, PY, PW, PH);
+    ctx.fillStyle = `rgba(${BG},${(LY.overlay ? 0.45 : 0.62) * k})`; ctx.fillRect(PX, PY, PW, PH);
     ctx.save(); ctx.translate(PX + PW / 2, PY + PH / 2 - 30); const s = (0.8 + 0.2 * k) * Math.min(1, PW / 940); ctx.scale(s, s); ctx.globalAlpha = k;
     ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.font = `900 150px ${FONT}`; ctx.shadowColor = color; ctx.shadowBlur = 40;
     ctx.fillText(name, 0, 0); ctx.shadowBlur = 0;
@@ -353,7 +355,7 @@ export function createRenderer(canvas, game, opts = {}) {
     draw(t = game.t) {
       now = t;
       if (LY.overlay) ctx.clearRect(0, 0, canvas.width, canvas.height);
-      else { ctx.fillStyle = '#04040a'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      else { ctx.fillStyle = TH.bg; ctx.fillRect(0, 0, canvas.width, canvas.height); }
       paintBase(); drawEffects(); drawHud(); drawEnd();
     },
   };

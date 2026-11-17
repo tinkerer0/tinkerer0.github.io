@@ -2,9 +2,10 @@
 import { ABILITIES, COLORS, buildMap } from './sim.js';
 import { prepare, makeSession, hash } from './session.js';
 import { initAds, adsForScreen, whenPrivacyOptionsRequired, showPrivacyOptions } from './ads.js';
-import { polygon } from './render.js';
+import { polygon, cellShapes } from './render.js';
 import { renderAudio, SAMPLE_RATE } from './audio.js';
-import { randomPair, colorDistance, MIN_PAIR_DISTANCE } from './colors.js';
+import { randomPair, colorDistance, MIN_PAIR_DISTANCE, COLOR_ORDER } from './colors.js';
+import { THEMES, DEFAULT_THEME, themeOf } from './themes.js';
 import { APP_VERSION } from './version.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,13 +23,21 @@ const ABS = Object.keys(ABILITIES);
 // ---- 저장: 버전 키, 이상한 값은 기본값으로 ----
 const SAVE_KEY = 'colorwar.prefs.v1';
 function loadPrefs() {
-  const d = { sound: true, haptic: true, time: 60 };
+  const d = { sound: true, haptic: true, time: 60, theme: DEFAULT_THEME };
   try {
     const v = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-    return { sound: typeof v.sound === 'boolean' ? v.sound : d.sound, haptic: typeof v.haptic === 'boolean' ? v.haptic : d.haptic, time: TIMES.includes(v.time) ? v.time : d.time };
+    return { sound: typeof v.sound === 'boolean' ? v.sound : d.sound, haptic: typeof v.haptic === 'boolean' ? v.haptic : d.haptic, time: TIMES.includes(v.time) ? v.time : d.time, theme: v.theme in THEMES ? v.theme : d.theme };
   } catch { return d; }
 }
 const prefs = loadPrefs();
+// 테마(themes.js)를 화면 바탕에 입힌다. 판은 대결을 만들 때 prefs.theme으로 그린다
+function applyTheme() {
+  const t = themeOf(prefs.theme), st = document.documentElement.style;
+  st.setProperty('--bg', t.bg); st.setProperty('--tile', t.tile); st.setProperty('--ink', t.ink);
+  st.setProperty('--bg-rgb', [1, 3, 5].map((i) => parseInt(t.bg.slice(i, i + 2), 16)).join(','));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t.bg);
+}
+applyTheme();
 const savePrefs = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(prefs)); } catch { /* 저장 공간 없음: 이번 실행만 유지 */ } };
 const haptic = () => { if (prefs.haptic && window.Capacitor?.isNativePlatform?.()) window.Capacitor.nativePromise?.('Haptics', 'impact', { style: 'LIGHT' })?.catch?.(() => {}); };
 
@@ -54,15 +63,12 @@ const shade = [0.27, 0.95, 0.27, 0.6, 0.27, 0.27, 0.6, 0.95, 0.27, 0.6, 0.27, 0.
 const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 function drawTile(cv, color, ability) {
   const S = cv.width, g = cv.getContext('2d'), c = rgbOf(COLORS[color]);
-  const off = document.createElement('canvas'); off.width = off.height = 80;
-  const o = off.getContext('2d'), img = o.createImageData(80, 80), L = tileMap.labels;
-  for (let p = 0; p < 80 * 80; p++) {
-    const l = L[p], x = p % 80, edge = (x < 79 && L[p + 1] !== l) || (p + 80 < 6400 && L[p + 80] !== l);
-    const k = edge ? shade[l % shade.length] * 0.55 + 0.12 : shade[l % shade.length];
-    img.data.set([c[0] * k, c[1] * k, c[2] * k, 255], p * 4);
-  }
-  o.putImageData(img, 0, 0);
-  g.imageSmoothingEnabled = true; g.drawImage(off, 0, 0, S, S);
+  // 판과 같이 칸을 다각형으로 그린다(크게 띄워도 테두리가 계단지지 않게)
+  const { polys, edges } = cellShapes(tileMap), k = S / 80, rgb = (m) => `rgb(${c.map((v) => (v * m) | 0).join(',')})`;
+  g.save(); g.scale(k, k); g.lineJoin = 'round'; g.lineCap = 'round'; g.lineWidth = 1;
+  polys.forEach((P, i) => { g.beginPath(); P.forEach(([x, y], j) => (j ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fillStyle = rgb(shade[i % shade.length]); g.fill(); });
+  for (const e of edges) { g.beginPath(); g.moveTo(e.x1, e.y1); g.lineTo(e.x2, e.y2); g.strokeStyle = rgb(shade[e.a % shade.length] * 0.55 + 0.12); g.stroke(); }
+  g.restore();
   polygon(g, ABILITIES[ability].icon, S / 2, S / 2, -0.5, S * 0.26);
   g.fillStyle = COLORS[color]; g.shadowColor = COLORS[color]; g.shadowBlur = S * 0.12; g.fill();
   g.shadowBlur = 0; g.lineWidth = Math.max(2, S * 0.035); g.strokeStyle = '#fff'; g.stroke();
@@ -88,12 +94,23 @@ function paintLobby() {
     el.querySelector('b').style.color = COLORS[s.color];
   });
   document.querySelectorAll('#times button').forEach((b) => b.classList.toggle('on', Number(b.dataset.t) === prefs.time));
+  document.querySelectorAll('#themes button').forEach((b) => b.classList.toggle('on', b.dataset.theme === prefs.theme));
   $('bSound').classList.toggle('off', !prefs.sound); $('bSound2').classList.toggle('off', !prefs.sound);
   $('bHaptic').classList.toggle('off', !prefs.haptic); $('bHaptic2').classList.toggle('off', !prefs.haptic);
 }
 
 document.querySelectorAll('.side').forEach((el) => { el.onclick = () => { haptic(); openPicker(el.dataset.side); }; });
 document.querySelectorAll('#times button').forEach((b) => { b.onclick = () => { haptic(); prefs.time = Number(b.dataset.t); savePrefs(); paintLobby(); }; });
+// 테마 줄: themes.js에 테마가 둘 이상일 때만 보인다. 바꾸면 화면 바탕은 바로, 판은 다음 대결부터
+if (Object.keys(THEMES).length > 1) {
+  const box = $('themes'); box.hidden = false;
+  for (const [key, t] of Object.entries(THEMES)) {
+    const b = document.createElement('button'); b.dataset.theme = key; b.textContent = KO ? t.label.ko : t.label.en;
+    const dot = document.createElement('i'); dot.style.background = t.bg; dot.style.borderColor = `rgb(${t.line.join(',')})`; b.prepend(dot);
+    b.onclick = () => { haptic(); prefs.theme = key; savePrefs(); applyTheme(); paintLobby(); };
+    box.append(b);
+  }
+}
 $('bRandom').onclick = () => { haptic(); picks = randomPicks(); startPlay(paramsFrom(picks), 'random'); };
 $('bStart').onclick = () => { haptic(); startPlay(paramsFrom(picks), 'fixed'); };
 const setSettings = (open) => { $('settings').hidden = !open; $('scrim').hidden = !open; };
@@ -109,7 +126,7 @@ $('bHaptic').onclick = () => { prefs.haptic = !prefs.haptic; savePrefs(); haptic
 // ---- 주인공 고르기 ----
 let side = 'a';
 const swBox = $('swatches'), abBox = $('abilities');
-for (const name of Object.keys(COLORS)) {
+for (const name of COLOR_ORDER) { // 색상환 순서(colors.js가 정렬). 새 색은 목록 아무 데나 넣어도 제자리에 온다
   const b = document.createElement('button'); b.style.background = COLORS[name]; b.dataset.c = name; b.setAttribute('aria-label', name);
   b.onclick = () => {
     if (b.classList.contains('taken')) { haptic(); toast(KO ? `상대 ${picks[side === 'a' ? 'b' : 'a'].color}와 비슷해서 판에서 구별이 안 됨` : `Too close to ${picks[side === 'a' ? 'b' : 'a'].color} to tell apart on the board`); return; }
@@ -211,7 +228,9 @@ function startPlay(params, m) {
   stopAudio();
   let prep;
   const layout = layoutFor();
-  try { prep = prepare({ ...params, dims: layout === 'desk' ? [403, 313] : undefined }); cur = { params, prep, sess: makeSession(prep, canvas, { footer: '', layout }), pcm: null }; } catch (e) { recover(e); return; }
+  try { prep = prepare({ ...params, dims: layout === 'desk' ? [403, 313] : undefined }); cur = { params, prep, sess: makeSession(prep, canvas, { footer: '', layout, theme: prefs.theme }), pcm: null }; } catch (e) { recover(e); return; }
+  // 랜덤 대결은 소개가 처음부터 다 보이게 대결 화면을 흐려지는 전환 없이 바로 띄운다
+  if (m === 'random') { const pl = $('play'); pl.classList.add('instant'); requestAnimationFrame(() => requestAnimationFrame(() => pl.classList.remove('instant'))); }
   show('play'); placeMenuBtn();
   clk.t0 = wall(); clk.paused = 0; clk.pausedAt = 0;
   endIntro(false);
@@ -231,14 +250,20 @@ function showIntro() {
     el.querySelector('b').textContent = s.color; el.querySelector('b').style.color = COLORS[s.color];
     el.querySelector('small').textContent = ABILITIES[s.ability].label;
   }
-  const box = $('intro'); box.classList.remove('on'); box.hidden = false;
-  requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('on')));
+  // 바탕은 두 팀 색 반반. 처음부터 다 보이게 바로 띄운다
+  const box = $('intro'); box.style.setProperty('--ia', COLORS[picks.a.color]); box.style.setProperty('--ib', COLORS[picks.b.color]);
+  box.hidden = false;
+  // 긴 이름(WATERMELON 등)은 카드 안에 들어올 때까지 글씨를 줄인다
+  box.querySelectorAll('.who b').forEach((b) => {
+    b.style.fontSize = ''; let px = parseFloat(getComputedStyle(b).fontSize); const max = b.parentElement.clientWidth;
+    while (b.scrollWidth > max && px > 14) { px -= 2; b.style.fontSize = `${px}px`; }
+  });
   introTimer = setTimeout(() => endIntro(true), INTRO_MS);
 }
 // go: 소개를 끝내고 대결을 시작한다(false면 덮개만 치운다)
 function endIntro(go) {
   clearTimeout(introTimer); introTimer = 0;
-  $('intro').hidden = true; $('intro').classList.remove('on');
+  $('intro').hidden = true;
   if (!clk.intro) return;
   clk.intro = false;
   if (go) { resumeClock(); if (!clk.pausedAt) startAudio(); }
@@ -329,6 +354,7 @@ if (new URLSearchParams(location.search).has('dev')) {
   window.cwDev = {
     match(a, b, seed, t, time = 60) { picks = { a, b }; prefs.time = time; startPlay({ ...paramsFrom(picks), seed }, 'fixed'); clk.t0 = wall() - t; clk.manual = true; clk.pausedAt = wall(); stopAudio(); for (let k = 0; k <= t; k += 1 / 30) cur.sess.draw(k); dirty = true; }, // 실제 재생처럼 프레임을 차례로 그려 효과가 제때 사라지게 한다
     lobby(a, b) { picks = { a, b }; show('lobby'); },
+    intro(a, b) { picks = { a, b }; startPlay(paramsFrom(picks), 'random'); }, // 랜덤 대결 소개 화면 확인용
     frame(t) { cur.sess.draw(t); }, // 미리보기 영상: 정해진 시각의 화면을 그린다
     picker(a, b, s) { picks = { a, b }; openPicker(s); },
   };
