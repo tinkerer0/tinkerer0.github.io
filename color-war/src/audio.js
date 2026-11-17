@@ -71,19 +71,30 @@ export function renderAudio(log, duration, seed = 1, opts = {}) {
   const pent = [0, 2, 4, 7, 9];
   const lastCap = [0, -1, -1];
   const capIdx = [0, 0, 0];
+  // 겹침 묶기: 같은 팀의 같은 종류 효과음(줄기·폭발·파동·튕김)이 40ms(폭발은 120ms) 안에 여러 개 나면 소리 하나로 내고,
+  // 개수에 따라 조금만 키운다(최대 3배). Prism 50줄기·Meteor 14개 폭발이 한꺼번에 겹쳐 배경음을 덮던 것을 막는다
+  const GROUP = new Set(['beam', 'blast', 'wave', 'bounce']), firstOf = new Map(), open = {};
+  for (const e of log) {
+    if (!GROUP.has(e.type)) continue;
+    const k = `${e.team}|${e.type}`, gp = open[k];
+    if (gp && e.t - gp.t < (e.type === 'blast' ? 0.12 : 0.04)) gp.n++; else firstOf.set(e, (open[k] = { t: e.t, n: 1 })); // 폭발은 시차를 두고 터져 더 넓게 묶는다
+  }
+  const boost = (e) => { const gp = firstOf.get(e); return gp ? Math.min(3, 1 + 0.35 * Math.log2(gp.n)) : 0; };
   for (const e of opts.sfx === false ? [] : log) {
+    const b = GROUP.has(e.type) ? boost(e) : 1;
+    if (!b) continue; // 묶음의 첫 소리에서만 낸다
     if (e.type === 'cap') {
       if (e.t - lastCap[e.team] < 0.06) continue; lastCap[e.team] = e.t;
       const i = capIdx[e.team]++; const m = tr.root + 24 + (e.team === 2 ? 7 : 0) + pent[i % 5] + 12 * (Math.floor(i / 5) % 2);
       add(e.t, 0.09, (t, k) => sine(midi(m), t) * env(k, 0.003, 2), 0.1 + 0.03 * Math.min(4, e.n));
     } else if (e.type === 'beam') {
-      add(e.t, 0.16, (t, k) => sine(700 + 2600 * (1 - k) ** 2, t) * env(k, 0.002, 2), 0.1);
+      add(e.t, 0.16, (t, k) => sine(700 + 2600 * (1 - k) ** 2, t) * env(k, 0.002, 2), 0.12 * b);
     } else if (e.type === 'bounce') {
-      add(e.t, 0.05, (t, k) => sine(220, t) * env(k, 0.002, 2), 0.08);
+      add(e.t, 0.05, (t, k) => sine(220, t) * env(k, 0.002, 2), 0.08 * b);
     } else if (e.type === 'wave') {
-      add(e.t, 0.35, (t, k) => rnd() * Math.sin(Math.PI * k) * (0.5 + 0.5 * Math.sin(t * 60)), 0.1);
+      add(e.t, 0.35, (t, k) => rnd() * Math.sin(Math.PI * k) * (0.5 + 0.5 * Math.sin(t * 60)), 0.1 * b);
     } else if (e.type === 'blast') {
-      add(e.t, 0.25, (t, k) => sine(95 * Math.exp(-t * 9) + 40, t) * env(k, 0.002, 2) * 1.2 + rnd() * env(k, 0.001, 5) * 0.3, 0.4);
+      add(e.t, 0.25, (t, k) => sine(95 * Math.exp(-t * 9) + 40, t) * env(k, 0.002, 2) * 1.2 + rnd() * env(k, 0.001, 5) * 0.3, 0.24 * b);
     } else if (e.type === 'lock') {
       for (const [d, m] of [[0, 84], [0.07, 91]]) add(e.t + d, 0.5, (t, k) => (sine(midi(m), t) + 0.3 * sine(midi(m) * 2.76, t)) * env(k, 0.003, 3), 0.11);
     } else if (e.type === 'end') {
@@ -91,11 +102,43 @@ export function renderAudio(log, duration, seed = 1, opts = {}) {
       kick(e.t, 1.1);
     }
   }
-  let peak = 0;
-  for (let i = 0; i < n; i++) { out[i] = Math.tanh(out[i] * 1.1); peak = Math.max(peak, Math.abs(out[i])); }
-  const norm = peak > 0 ? 0.89 / peak : 1;
-  for (let i = 0; i < n; i++) out[i] *= norm;
+  if (opts.normalize === false) return out; // 검사용: 섞은 그대로(포화·음량 맞춤 전)
+  return master(out);
   return out;
+}
+
+// 최종 음량: 들리는 크기(ITU-R BS.1770 적분 음량, LUFS)를 TARGET_LUFS로 맞추고, 순간 최대는 -1 dBFS 천장 아래로 부드럽게 누른다.
+// 휴대폰 게임·영상의 흔한 기준(-16 LUFS, 유튜브 재생 기준 -14 LUFS보다 조금 작게). 판마다·능력마다 크기가 들쭉날쭉하지 않다.
+export const TARGET_LUFS = -16, CEILING = 10 ** (-1 / 20);
+function biquad(x, b0, b1, b2, a0, a1, a2) {
+  const y = new Float32Array(x.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) { const v = (b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = x[i]; y2 = y1; y1 = v; y[i] = v; }
+  return y;
+}
+export function loudness(x, sr = SR) {
+  // K 가중(높은 음 선반 +4dB @1.5kHz, 38Hz 고역 통과) → 400ms 구간(100ms 간격) → 절대 -70 LUFS, 상대 -10 LU 문턱
+  let w = 2 * Math.PI * 1500 / sr, A = 10 ** (4 / 40), al = Math.sin(w) / Math.SQRT2, c = Math.cos(w), sA = 2 * Math.sqrt(A) * al;
+  let y = biquad(x, A * ((A + 1) + (A - 1) * c + sA), -2 * A * ((A - 1) + (A + 1) * c), A * ((A + 1) + (A - 1) * c - sA), (A + 1) - (A - 1) * c + sA, 2 * ((A - 1) - (A + 1) * c), (A + 1) - (A - 1) * c - sA);
+  w = 2 * Math.PI * 38 / sr; al = Math.sin(w) / (2 * 0.5); c = Math.cos(w);
+  y = biquad(y, (1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + al, -2 * c, 1 - al);
+  const B = Math.round(0.4 * sr), H = Math.round(0.1 * sr), z = [];
+  for (let s0 = 0; s0 + B <= y.length; s0 += H) { let q = 0; for (let i = s0; i < s0 + B; i++) q += y[i] * y[i]; z.push(q / B); }
+  const L = (m) => -0.691 + 10 * Math.log10(m), mean = (a) => a.reduce((p, v) => p + v, 0) / a.length;
+  const abs = z.filter((v) => L(v) > -70); if (!abs.length) return -Infinity;
+  const rel = L(mean(abs)) - 10, gated = abs.filter((v) => L(v) > rel);
+  return L(mean(gated));
+}
+function master(x) {
+  const T = 0.6 * CEILING, R = CEILING - T; // 천장의 60%까지는 그대로, 그 위만 부드럽게 눌러 천장을 넘지 않게
+  const limit = (v) => { const a = Math.abs(v); return a <= T ? v : Math.sign(v) * (T + R * Math.tanh((a - T) / R)); };
+  let g = 1;
+  for (let it = 0; it < 3; it++) { // 누르면 조금 작아지므로 몇 번 다시 잰다
+    const y = x.map((v) => limit(v * g)), l = loudness(y);
+    if (!Number.isFinite(l)) return y;
+    if (Math.abs(l - TARGET_LUFS) < 0.2 || it === 2) return y;
+    g *= 10 ** ((TARGET_LUFS - l) / 20);
+  }
+  return x;
 }
 
 export function toWav(pcm) {
