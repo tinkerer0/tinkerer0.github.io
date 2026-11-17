@@ -222,7 +222,7 @@ function startPlay(params, m) {
   if (prefs.sound) requestPcm(cur);
   if (!clk.pausedAt) startAudio();
 }
-const INTRO_MS = 1700;
+const INTRO_MS = 2500;
 let introTimer = 0;
 function showIntro() {
   for (const side of ['a', 'b']) {
