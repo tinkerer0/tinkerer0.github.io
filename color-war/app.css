@@ -92,15 +92,18 @@ svg { fill: currentColor; }
 /* 랜덤 대결 소개: 두 카드가 양옆에서 들어오고 가운데 VS */
 /* 랜덤 대결 소개: 화면을 두 팀 색으로 반반(위 A·아래 B) 채우고, 화면 너비 80%의 카드 둘과 큰 VS를 가운데에.
    처음부터 다 보인다(나타날 때 움직임·페이드 없음). 사라질 때만 짧게 흐려진다. --ia/--ib는 app.js showIntro가 넣고, 긴 이름 글씨 줄이기도 거기서 한다 */
-#intro { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5vh;
+#intro { position: absolute; inset: 0; z-index: 3; display: grid; grid-template-rows: 1fr 1fr; justify-items: center; --vs: min(22vw, 11vh); --vsgap: calc(var(--vs) / 2 + 1.8vh);
   background: linear-gradient(to bottom, var(--ia) 50%, var(--ib) 50%); transition: none; }
-#intro[hidden] { display: flex; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .25s, visibility 0s .25s; }
+#intro[hidden] { display: grid; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .25s, visibility 0s .25s; }
 #intro .who { width: 80vw; display: flex; flex-direction: column; align-items: center; gap: 1.2vh; padding: 2.4vh 4vw; border-radius: 26px; background: var(--tile); box-shadow: 0 10px 34px rgba(0,0,0,.35); text-align: center; }
+/* VS는 화면 정가운데(두 색 경계)에 고정하고, 카드는 경계에서 같은 거리만큼 떨어져 위·아래로 붙는다(이름 길이로 카드 높이가 달라도 VS가 안 밀림) */
+#intro .who.a { align-self: end; margin-bottom: var(--vsgap); }
+#intro .who.b { align-self: start; margin-top: var(--vsgap); }
 #intro .who canvas { width: min(30vw, 19vh); height: min(30vw, 19vh); border-radius: 20px; flex: none; }
 #intro .who div { display: flex; flex-direction: column; align-items: center; gap: .6vh; width: 100%; min-width: 0; }
 #intro .who b { font-size: min(13vw, 7.5vh); line-height: 1; font-weight: 900; white-space: nowrap; }
 #intro .who small { font-size: min(6vw, 3.4vh); color: var(--dim); }
-#intro i { font-style: normal; font-size: min(22vw, 11vh); line-height: .9; font-weight: 900; letter-spacing: .04em; color: #05050a; transform: skewX(-12deg); }
+#intro i { position: absolute; left: 50%; top: 50%; font-style: normal; font-size: var(--vs); line-height: 1; font-weight: 900; letter-spacing: .04em; color: #05050a; white-space: nowrap; transform: translate(-50%, -50%) skewX(-12deg); }
 
 /* 규칙 */
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; padding: 22px 20px calc(20px + var(--sab)); background: var(--tile); border-top: 2.5px solid var(--rim);

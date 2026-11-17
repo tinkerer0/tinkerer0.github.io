@@ -255,7 +255,8 @@ function showIntro() {
   box.hidden = false;
   // 긴 이름(WATERMELON 등)은 카드 안에 들어올 때까지 글씨를 줄인다
   box.querySelectorAll('.who b').forEach((b) => {
-    b.style.fontSize = ''; let px = parseFloat(getComputedStyle(b).fontSize); const max = b.parentElement.clientWidth;
+    b.style.fontSize = ''; b.style.lineHeight = ''; let px = parseFloat(getComputedStyle(b).fontSize); const max = b.parentElement.clientWidth;
+    b.style.lineHeight = `${px}px`; // 줄 높이는 원래 크기로 고정해 두 카드 높이를 같게 둔다
     while (b.scrollWidth > max && px > 14) { px -= 2; b.style.fontSize = `${px}px`; }
   });
   introTimer = setTimeout(() => endIntro(true), INTRO_MS);
