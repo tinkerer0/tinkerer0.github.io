@@ -5,16 +5,16 @@ import { createRenderer } from './render.js';
 export const FPS = 30, HOLD = 3;
 export const hash = (s) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const maps = new Map();
-// wide: 웹 가로 화면용으로 같은 넓이의 판을 눕힌다(403x313). 앱·영상은 세로 판(313x403)
-const mapFor = (label, wide) => { const k = wide ? `${label}|wide` : label; if (!maps.has(k)) maps.set(k, wide ? buildMap(hash(label), 403, 313) : buildMap(hash(label))); return maps.get(k); };
+// dims: 판 크기를 바꿀 때 [W, H](웹 가로 화면 [403, 313], 맥 화면 덮개는 화면 비율). 없으면 세로 판(313x403, 앱·영상)
+const mapFor = (label, dims) => { const k = dims ? `${label}|${dims[0]}x${dims[1]}` : label; if (!maps.has(k)) maps.set(k, dims ? buildMap(hash(label), dims[0], dims[1]) : buildMap(hash(label))); return maps.get(k); };
 
 export function makeConfig(o) {
-  return { a: { color: o.colorA, ability: o.abilityA }, b: { color: o.colorB, ability: o.abilityB }, seedLabel: o.seed, lockWin: o.lockWin, maxTime: o.maxTime ? Number(o.maxTime) : undefined };
+  return { a: { color: o.colorA, ability: o.abilityA }, b: { color: o.colorB, ability: o.abilityB }, seedLabel: o.seed, lockWin: o.lockWin, empty: !!o.empty, maxTime: o.maxTime ? Number(o.maxTime) : undefined };
 }
 
 // 같은 시드면 같은 판이다. 먼저 끝까지 돌려 이벤트 기록·길이·소리를 만든다.
 export function prepare(o) {
-  const cfg = makeConfig(o), map = mapFor(o.seed, o.wide), seed = hash(o.seed + ':battle');
+  const cfg = makeConfig(o), map = mapFor(o.seed, o.dims), seed = hash(o.seed + ':battle');
   const res = runMatch(map, cfg, seed, true);
   const duration = res.time + HOLD;
   return { cfg, map, seed, res, duration, frames: Math.ceil(duration * FPS), log: res.log };

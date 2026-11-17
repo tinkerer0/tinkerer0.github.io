@@ -211,7 +211,7 @@ function startPlay(params, m) {
   stopAudio();
   let prep;
   const layout = layoutFor();
-  try { prep = prepare({ ...params, wide: layout === 'desk' }); cur = { params, prep, sess: makeSession(prep, canvas, { footer: '', layout }), pcm: null }; } catch (e) { recover(e); return; }
+  try { prep = prepare({ ...params, dims: layout === 'desk' ? [403, 313] : undefined }); cur = { params, prep, sess: makeSession(prep, canvas, { footer: '', layout }), pcm: null }; } catch (e) { recover(e); return; }
   show('play'); placeMenuBtn();
   clk.t0 = wall(); clk.paused = 0; clk.pausedAt = 0;
   endIntro(false);

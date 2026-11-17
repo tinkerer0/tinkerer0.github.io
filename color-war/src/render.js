@@ -40,10 +40,42 @@ export function polygon(ctx, shape, x, y, ang, size) {
   ctx.closePath();
 }
 
+// 칸 모양: 씨앗 점의 보로노이 다각형(판 사각형으로 자름). 변마다 맞닿은 칸 번호(-1은 판 테두리)를 붙인다.
+// 판(map)마다 한 번만 만든다. 대결 계산의 픽셀 칸(labels)도 같은 씨앗 점으로 나눈 것이라 경계가 겹친다.
+function cellShapes(map) {
+  if (map.shapes) return map.shapes;
+  const { W, H, N, sx, sy } = map, polys = [], edges = [];
+  for (let i = 0; i < N; i++) {
+    let P = [[0, 0, -1], [W, 0, -1], [W, H, -1], [0, H, -1]]; // [x, y, 이 점에서 시작하는 변의 이웃]
+    for (let j = 0; j < N && P.length; j++) {
+      if (j === i) continue;
+      const nx = sx[j] - sx[i], ny = sy[j] - sy[i], c = (sx[j] ** 2 + sy[j] ** 2 - sx[i] ** 2 - sy[i] ** 2) / 2;
+      const side = (p) => nx * p[0] + ny * p[1] - c; // <= 0 이면 i 쪽
+      if (P.every((p) => side(p) <= 0)) continue;
+      const out = [];
+      for (let k = 0; k < P.length; k++) {
+        const A = P[k], B = P[(k + 1) % P.length], da = side(A), db = side(B);
+        const cut = () => { const t = da / (da - db); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; };
+        if (da <= 0 && db <= 0) out.push(A);
+        else if (da <= 0) { out.push(A); out.push([...cut(), j]); }
+        else if (db <= 0) out.push([...cut(), A[2]]);
+      }
+      P = out;
+    }
+    polys.push(P);
+    for (let k = 0; k < P.length; k++) {
+      const A = P[k], B = P[(k + 1) % P.length];
+      if (A[2] > i) edges.push({ a: i, b: A[2], x1: A[0], y1: A[1], x2: B[0], y2: B[1] });
+    }
+  }
+  return (map.shapes = { polys, edges });
+}
+
 export function createRenderer(canvas, game, opts = {}) {
   const { map, cfg } = game;
-  const { W, H, N, labels } = map;
-  const LY = LAYOUTS[opts.layout] || LAYOUTS.video, { PX, PY, PW } = LY;
+  const { W, H, N } = map;
+  // overlay: 맥 화면 덮개. 캔버스 전체가 판이고(판 비율 = 화면 비율), 칸은 반투명, 배너는 위 가운데에 작게
+  const LY = opts.layout === 'overlay' ? { PX: 0, PY: 0, PW: canvas.width, width: canvas.width, height: canvas.height, overlay: true } : LAYOUTS[opts.layout] || LAYOUTS.video, { PX, PY, PW } = LY;
   const SC = PW / W, PH = Math.round(H * SC);
   // app 배치는 능력 패널 아래까지만 캔버스를 쓴다
   const height = LY.height || PY + PH + 34 + 200 * (LY.sideK || 1);
@@ -51,18 +83,8 @@ export function createRenderer(canvas, game, opts = {}) {
   const width = LY.width || 1080;
   if (canvas.width !== width) canvas.width = width;
   const ctx = canvas.getContext('2d');
-  const base = document.createElement('canvas'); base.width = W; base.height = H;
-  const bctx = base.getContext('2d');
-  const img = bctx.createImageData(W, H);
   const col = [[20, 20, 28], hex(COLORS[cfg.a.color]), hex(COLORS[cfg.b.color])];
   const hexc = [null, COLORS[cfg.a.color], COLORS[cfg.b.color]];
-  // 경계: 오른쪽·아래 이웃이 다른 셀이면 그 이웃 번호를 기록
-  const edge = new Int32Array(W * H).fill(-1);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const l = labels[y * W + x];
-    if (x + 1 < W && labels[y * W + x + 1] !== l) edge[y * W + x] = labels[y * W + x + 1];
-    else if (y + 1 < H && labels[(y + 1) * W + x] !== l) edge[y * W + x] = labels[(y + 1) * W + x];
-  }
   const prevOwner = Uint8Array.from(game.owner);
   const flash = new Float32Array(N);
   const cellRgb = new Float32Array(N * 3);
@@ -80,7 +102,7 @@ export function createRenderer(canvas, game, opts = {}) {
   }
 
   function paintBase() {
-    const t = now, d = img.data, owner = game.owner, locked = game.locked;
+    const t = now, owner = game.owner, locked = game.locked;
     for (let i = 0; i < N; i++) {
       if (owner[i] !== prevOwner[i]) { prevOwner[i] = owner[i]; flash[i] = t; }
       const o = owner[i], c = col[o];
@@ -89,26 +111,58 @@ export function createRenderer(canvas, game, opts = {}) {
       else if (game.shieldUntil && game.shieldUntil[i] > t) b = 0.78;
       else if (game.since[i] > 0 && o) { const k = Math.min(1, (t - game.since[i]) / LOCK_SECONDS); b = DIM + (0.95 - DIM) * (1 - k) ** 1.6; }
       else b = DIM;
-      let r = c[0] * b, g = c[1] * b, bl = c[2] * b;
       const f = flash[i] ? 1 - (t - flash[i]) / FLASH : 0;
+      if (LY.overlay) {
+        // 덮개: 차지한 칸은 불투명한 선명한 색(막 뺏은 칸·굳은 칸이 조금 더 밝다), 빈 칸은 완전 투명
+        const k = 0.82 + 0.18 * Math.max(0, Math.min(1, (b - DIM) / (0.95 - DIM)));
+        let r = c[0] * k, g = c[1] * k, bl = c[2] * k;
+        if (f > 0) { r += (255 - r) * f * 0.6; g += (255 - g) * f * 0.6; bl += (255 - bl) * f * 0.6; }
+        cellRgb[i * 3] = r; cellRgb[i * 3 + 1] = g; cellRgb[i * 3 + 2] = bl;
+        continue;
+      }
+      let r = c[0] * b, g = c[1] * b, bl = c[2] * b;
       if (f > 0) { r += (255 - r) * f * 0.75; g += (255 - g) * f * 0.75; bl += (255 - bl) * f * 0.75; }
       cellRgb[i * 3] = r; cellRgb[i * 3 + 1] = g; cellRgb[i * 3 + 2] = bl;
     }
-    for (let p = 0; p < W * H; p++) {
-      const l = labels[p];
-      let r = cellRgb[l * 3], g = cellRgb[l * 3 + 1], b = cellRgb[l * 3 + 2];
-      const e = edge[p];
-      if (e >= 0) {
-        if (owner[e] !== owner[l]) { r = 245; g = 245; b = 250; }
-        else if (locked[l]) { r = 235; g = 245; b = 255; }
-        else if (game.shieldUntil && game.shieldUntil[l] > now) { const c = col[owner[l]]; r = c[0] * 0.4 + 150; g = c[1] * 0.4 + 150; b = c[2] * 0.4 + 150; }
-        else { const c = col[owner[l]]; r = r * 0.55 + c[0] * 0.2; g = g * 0.55 + c[1] * 0.2; b = b * 0.55 + c[2] * 0.2; }
-      }
-      const q = p * 4; d[q] = r; d[q + 1] = g; d[q + 2] = b; d[q + 3] = 255;
+    drawCells();
+  }
+
+  // 칸을 다각형으로 그린다(유닛·궤적과 같은 해상도로 선명하게). 경계 색:
+  // 다른 색끼리 흰 선, 같은 색끼리 칸 색보다 조금 다른 선, 굳은 칸은 밝은 선, 방패 칸은 색을 섞은 밝은 선
+  const shapes = cellShapes(map);
+  const rgb = (r, g, b) => `rgb(${r | 0},${g | 0},${b | 0})`;
+  function drawCells() {
+    const owner = game.owner, locked = game.locked, shield = game.shieldUntil;
+    ctx.save(); ctx.translate(PX, PY); ctx.scale(SC, PH / H);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.lineWidth = 1;
+    for (let i = 0; i < N; i++) {
+      if (LY.overlay && !owner[i]) continue;
+      const P = shapes.polys[i]; if (P.length < 3) continue;
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]);
+      for (let k = 1; k < P.length; k++) ctx.lineTo(P[k][0], P[k][1]);
+      ctx.closePath();
+      ctx.fillStyle = rgb(cellRgb[i * 3], cellRgb[i * 3 + 1], cellRgb[i * 3 + 2]); ctx.fill();
     }
-    bctx.putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(base, PX, PY, PW, PH);
+    const white = new Path2D(), light = new Path2D(), shieldP = [null, new Path2D(), new Path2D()], same = new Map();
+    for (const e of shapes.edges) {
+      const oa = owner[e.a], ob = owner[e.b];
+      let path;
+      if (oa !== ob) path = white;
+      else if (LY.overlay) { if (!oa) continue; }
+      else if (locked[e.a] || locked[e.b]) path = light;
+      else if (shield && (shield[e.a] > now || shield[e.b] > now)) path = shieldP[oa];
+      if (!path) { path = same.get(e.a); if (!path) same.set(e.a, (path = new Path2D())); }
+      path.moveTo(e.x1, e.y1); path.lineTo(e.x2, e.y2);
+    }
+    for (const [i, path] of same) {
+      const r = cellRgb[i * 3], g = cellRgb[i * 3 + 1], b = cellRgb[i * 3 + 2], c = col[owner[i]];
+      ctx.strokeStyle = LY.overlay ? rgb(r * 0.72, g * 0.72, b * 0.72) : rgb(r * 0.55 + c[0] * 0.2, g * 0.55 + c[1] * 0.2, b * 0.55 + c[2] * 0.2);
+      ctx.stroke(path);
+    }
+    for (const t of [1, 2]) { const c = col[t]; ctx.strokeStyle = rgb(c[0] * 0.4 + 150, c[1] * 0.4 + 150, c[2] * 0.4 + 150); ctx.stroke(shieldP[t]); }
+    ctx.strokeStyle = 'rgb(235,245,255)'; ctx.stroke(light);
+    ctx.strokeStyle = LY.overlay ? 'rgb(250,250,252)' : 'rgb(245,245,250)'; ctx.stroke(white);
+    ctx.restore();
   }
 
   function drawEffects() {
@@ -195,7 +249,7 @@ export function createRenderer(canvas, game, opts = {}) {
 
   // 위: 대각선으로 갈라진 대결 배너(이름·셀 수). 아래: 능력 설명·수치·잠금 진행.
   function drawBanner() {
-    const A = cfg.a, B = cfg.b, y0 = LY.by0, y1 = LY.by1, bl = LY.bl, br = LY.br, sx = (bl + br) / 2, sl = 44, nameW = sx - bl - 210;
+    const A = cfg.a, B = cfg.b, y0 = LY.overlay ? 0 : LY.by0, y1 = LY.overlay ? 128 : LY.by1, bl = LY.overlay ? 0 : LY.bl, br = LY.overlay ? 1060 : LY.br, sx = (bl + br) / 2, sl = 44, nameW = sx - bl - 210;
     ctx.beginPath(); ctx.moveTo(bl, y0); ctx.lineTo(sx + sl, y0); ctx.lineTo(sx - sl, y1); ctx.lineTo(bl, y1); ctx.closePath();
     ctx.fillStyle = hexc[1]; ctx.fill();
     ctx.beginPath(); ctx.moveTo(sx + sl + 8, y0); ctx.lineTo(br, y0); ctx.lineTo(br, y1); ctx.lineTo(sx - sl + 8, y1); ctx.closePath();
@@ -209,6 +263,7 @@ export function createRenderer(canvas, game, opts = {}) {
     ctx.font = `700 26px ${FONT}`; ctx.fillText(ABILITIES[B.ability].label.toUpperCase(), br - 30, y0 + 106);
     ctx.font = `900 74px ${FONT}`; ctx.textAlign = 'right'; ctx.fillText(String(n[1]), sx - 62, y0 + 102);
     ctx.textAlign = 'left'; ctx.fillText(String(n[2]), sx + 62, y0 + 102);
+    if (LY.overlay) return;
     // 판 위쪽에 붙은 점령 줄(글자 없음)
     const bw = PW, tot = map.N;
     ctx.fillStyle = hexc[1]; ctx.fillRect(PX, PY - 14, bw * (n[1] / tot), 10);
@@ -256,6 +311,12 @@ export function createRenderer(canvas, game, opts = {}) {
   }
 
   function drawHud() {
+    if (LY.overlay) {
+      // 위 가운데 작은 배너(메뉴 막대 아래). 배너는 1060x128 기준으로 그려 줄인다
+      const s = Math.min(0.55, canvas.width / 2400), bwid = 1060 * s;
+      ctx.save(); ctx.translate((canvas.width - bwid) / 2, (opts.top ?? 44)); ctx.scale(s, s); drawBanner(); ctx.restore();
+      return;
+    }
     if (LY.columns) {
       const n = game.ownedN, tot = map.N;
       ctx.fillStyle = hexc[1]; ctx.fillRect(PX, PY - 14, PW * (n[1] / tot), 10);
@@ -277,7 +338,7 @@ export function createRenderer(canvas, game, opts = {}) {
     if (!game.over) return;
     const w = game.winner, color = hexc[w], name = w === 1 ? cfg.a.color : cfg.b.color;
     const k = Math.min(1, (now - game.endT) / 0.35);
-    ctx.fillStyle = `rgba(4,4,10,${0.62 * k})`; ctx.fillRect(PX, PY, PW, PH);
+    ctx.fillStyle = `rgba(4,4,10,${(LY.overlay ? 0.45 : 0.62) * k})`; ctx.fillRect(PX, PY, PW, PH);
     ctx.save(); ctx.translate(PX + PW / 2, PY + PH / 2 - 30); const s = (0.8 + 0.2 * k) * Math.min(1, PW / 940); ctx.scale(s, s); ctx.globalAlpha = k;
     ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.font = `900 150px ${FONT}`; ctx.shadowColor = color; ctx.shadowBlur = 40;
     ctx.fillText(name, 0, 0); ctx.shadowBlur = 0;
@@ -291,7 +352,8 @@ export function createRenderer(canvas, game, opts = {}) {
     ingest,
     draw(t = game.t) {
       now = t;
-      ctx.fillStyle = '#04040a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (LY.overlay) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      else { ctx.fillStyle = '#04040a'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
       paintBase(); drawEffects(); drawHud(); drawEnd();
     },
   };

@@ -90,7 +90,8 @@ export function buildMap(seed, W = 313, H = 403, N = 170) {
     if (y + 1 < H) { const d = labels[(y + 1) * W + x]; if (d !== l) { nb[l].add(d); nb[d].add(l); } }
   }
   for (let i = 0; i < N; i++) { cx[i] /= Math.max(1, area[i]); cy[i] /= Math.max(1, area[i]); }
-  return { W, H, N, labels, area, cx, cy, nb: nb.map((s) => [...s]), totalArea: W * H };
+  // sx·sy: 칸을 나눈 씨앗 점. 화면은 이것으로 칸 모양을 선명한 다각형으로 그린다(대결 계산에는 안 쓴다)
+  return { W, H, N, labels, area, cx, cy, nb: nb.map((s) => [...s]), totalArea: W * H, sx, sy };
 }
 
 const SPEED = { ricochet: 86, splitter: 66, wave: 70, laser: 70, spiral: 74, hunter: 112, orbit: 70, chain: 72, seeder: 72, pulse: 66, dash: 80, meteor: 70, plague: 70, blink: 66, bastion: 78, mirror: 74 };
@@ -119,6 +120,17 @@ export function createGame(map, cfg, seed) {
   };
   spawn(1, 'main', W * 0.25, H * (0.4 + rng() * 0.2), (rng() - 0.5) * 1.2, Infinity);
   spawn(2, 'main', W * 0.75, H * (0.4 + rng() * 0.2), Math.PI + (rng() - 0.5) * 1.2, Infinity);
+  // empty: 판을 빈 칸(0)으로 두고 두 팀은 출발점 주변 작은 땅에서 시작해 채워 간다(맥 화면 덮개)
+  if (cfg.empty) {
+    const R2 = (W * H * 0.035) / Math.PI;
+    owned.fill(0); ownedN.fill(0);
+    for (let i = 0; i < N; i++) {
+      let o = 0;
+      for (const a of g.agents) if ((cx[i] - a.x) ** 2 + (cy[i] - a.y) ** 2 < R2) o = a.team;
+      owner[i] = o; owned[o] += area[i]; ownedN[o]++;
+    }
+    start[1] = owned[1]; start[2] = owned[2];
+  }
   const cellAt = (x, y) => labels[Math.max(0, Math.min(H - 1, y | 0)) * W + Math.max(0, Math.min(W - 1, x | 0))];
   let tickCaps = [0, 0, 0], capX = [0, 0, 0], capY = [0, 0, 0];
 
@@ -143,7 +155,9 @@ export function createGame(map, cfg, seed) {
   };
   g.hud = (team) => {
     const ab = g.teams[team].ability, f = g.teams[team].fires, p = P[ab](f);
-    const loss = Math.max(0, Math.min(1, 1 - owned[team] / start[team]));
+    // 지는 정도: 보통은 처음 땅 대비 잃은 비율, 빈 판에서는 상대보다 뒤진 비율
+    const loss = cfg.empty ? Math.max(0, Math.min(1, (owned[3 - team] - owned[team]) / Math.max(1, owned[1] + owned[2])))
+      : Math.max(0, Math.min(1, 1 - owned[team] / start[team]));
     switch (ab) {
       case 'ricochet': return `REACH ${Math.round(p.len)}PX`;
       case 'splitter': return `PIECES ${1 + g.agents.filter((a) => a.team === team && a.kind === 'mini').length}`;
