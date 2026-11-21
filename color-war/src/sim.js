@@ -205,7 +205,7 @@ export function createGame(map, cfg, seed) {
   function enemyNearest(team, x, y) {
     let best = -1, bd = Infinity;
     for (let i = 0; i < N; i++) {
-      if (owner[i] === team || locked[i]) continue;
+      if (owner[i] === team || locked[i] || shieldUntil[i] > g.t) continue; // 보호막 칸은 못 먹으니 노리지 않는다(쫓는 유닛이 그 위에 서 있던 버그, 2026-11-20)
       const d = (cx[i] - x) ** 2 + (cy[i] - y) ** 2;
       if (d < bd) { bd = d; best = i; }
     }
@@ -333,11 +333,13 @@ export function createGame(map, cfg, seed) {
         a.turn += (rng() - 0.5) * 6 * TICK; a.turn *= 0.98;
         a.ang += a.turn * TICK * 4;
       } else if (ab === 'hunter' || ab === 'orbit') {
-        if (g.t >= a.retarget) { a.tgt = enemyNearest(a.team, a.x, a.y); a.retarget = g.t + 0.25; }
+        if (g.t >= a.retarget) { const nt = enemyNearest(a.team, a.x, a.y); if (nt !== a.tgt) a.tgtSince = g.t; a.tgt = nt; a.retarget = g.t + 0.25; }
         if (a.tgt >= 0) {
           let d = Math.atan2(cy[a.tgt] - a.y, cx[a.tgt] - a.x) - a.ang;
           d = Math.atan2(Math.sin(d), Math.cos(d));
-          a.ang += Math.max(-3.5 * TICK, Math.min(3.5 * TICK, d));
+          // 도는 반지름(속도/3.5)보다 작은 칸은 둘레만 맴돌 수 있다 → 같은 칸을 0.8초 넘게 쫓으면 크게 틀어 들어간다(2026-11-20 수정, 그 전 판은 그대로)
+          const lim = g.t - (a.tgtSince || 0) > 0.8 ? 14 : 3.5;
+          a.ang += Math.max(-lim * TICK, Math.min(lim * TICK, d));
         }
       } else if (ab === 'spiral') {
         const loss = Math.max(0, Math.min(1, 1 - owned[a.team] / g.start[a.team]));

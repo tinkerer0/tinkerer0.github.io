@@ -4,6 +4,7 @@ import { prepare, makeSession, hash } from './session.js';
 import { initAds, adsForScreen, whenPrivacyOptionsRequired, showPrivacyOptions } from './ads.js';
 import { polygon, cellShapes } from './render.js';
 import { renderAudio, SAMPLE_RATE } from './audio.js';
+import { renderLobby, renderIntro, renderTap, INTRO_SEC, TAP_VARIANTS } from './ui-audio.js';
 import { randomPair, colorDistance, MIN_PAIR_DISTANCE, COLOR_ORDER } from './colors.js';
 import { THEMES, DEFAULT_THEME, themeOf } from './themes.js';
 import { APP_VERSION } from './version.js';
@@ -39,7 +40,8 @@ function applyTheme() {
 }
 applyTheme();
 const savePrefs = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(prefs)); } catch { /* 저장 공간 없음: 이번 실행만 유지 */ } };
-const haptic = () => { if (prefs.haptic && window.Capacitor?.isNativePlatform?.()) window.Capacitor.nativePromise?.('Haptics', 'impact', { style: 'LIGHT' })?.catch?.(() => {}); };
+// 누름: 진동 + 누름 소리(kind: tap 일반 · pick 색·능력 고르기 · go 시작). 소리는 아래 '대결 밖 소리'에서
+const haptic = (kind = 'tap') => { tapSound(kind); if (prefs.haptic && window.Capacitor?.isNativePlatform?.()) window.Capacitor.nativePromise?.('Haptics', 'impact', { style: 'LIGHT' })?.catch?.(() => {}); };
 
 // ---- 고른 것 ----
 const rndSeed = () => Math.random().toString(36).slice(2, 6);
@@ -54,6 +56,7 @@ function show(name) {
   for (const s of ['lobby', 'picker', 'play']) $(s).hidden = s !== name;
   screen = name;
   if (name === 'lobby') paintLobby();
+  if (name === 'play') stopLobby(); else startLobby();
   adsForScreen(name);
 }
 
@@ -111,15 +114,15 @@ if (Object.keys(THEMES).length > 1) {
     box.append(b);
   }
 }
-$('bRandom').onclick = () => { haptic(); picks = randomPicks(); startPlay(paramsFrom(picks), 'random'); };
-$('bStart').onclick = () => { haptic(); startPlay(paramsFrom(picks), 'fixed'); };
+$('bRandom').onclick = () => { haptic('go'); picks = randomPicks(); startPlay(paramsFrom(picks), 'random'); };
+$('bStart').onclick = () => { haptic('go'); startPlay(paramsFrom(picks), 'fixed'); };
 const setSettings = (open) => { $('settings').hidden = !open; $('scrim').hidden = !open; };
 $('bSettings').onclick = () => { haptic(); setSettings(true); };
 whenPrivacyOptionsRequired(() => { $('adPrivacy').hidden = false; $('adPrivacySep').hidden = false; });
 $('adPrivacy').onclick = (e) => { e.preventDefault(); haptic(); showPrivacyOptions(); };
 $('bSettingsClose').onclick = () => { haptic(); setSettings(false); };
 $('scrim').onclick = () => { haptic(); setSettings(false); };
-const toggleSound = () => { haptic(); prefs.sound = !prefs.sound; savePrefs(); paintLobby(); if (prefs.sound) { actx?.resume?.().catch(() => {}); if (screen === 'play' && !clk.pausedAt) startAudio(); } else stopAudio(); };
+const toggleSound = () => { haptic(); prefs.sound = !prefs.sound; savePrefs(); paintLobby(); if (prefs.sound) { actx?.resume?.().catch(() => {}); if (screen === 'play') { if (!clk.pausedAt) startAudio(); } else startLobby(); } else { stopAudio(); stopIntroSound(); stopLobby(); } };
 $('bSound').onclick = toggleSound; $('bSound2').onclick = toggleSound;
 $('bHaptic').onclick = () => { prefs.haptic = !prefs.haptic; savePrefs(); haptic(); paintLobby(); };
 
@@ -130,14 +133,14 @@ for (const name of COLOR_ORDER) { // 색상환 순서(colors.js가 정렬). 새 
   const b = document.createElement('button'); b.style.background = COLORS[name]; b.dataset.c = name; b.setAttribute('aria-label', name);
   b.onclick = () => {
     if (b.classList.contains('taken')) { haptic(); toast(KO ? `상대 ${picks[side === 'a' ? 'b' : 'a'].color}와 비슷해서 판에서 구별이 안 됨` : `Too close to ${picks[side === 'a' ? 'b' : 'a'].color} to tell apart on the board`); return; }
-    haptic(); picks[side].color = name; paintPicker();
+    haptic('pick'); picks[side].color = name; paintPicker();
   };
   swBox.append(b);
 }
 for (const key of ABS) {
   const b = document.createElement('button'); b.dataset.a = key; b.setAttribute('aria-label', ABILITIES[key].label);
   const cv = document.createElement('canvas'); cv.width = cv.height = 96; b.append(cv);
-  b.onclick = () => { haptic(); picks[side].ability = key; paintPicker(); };
+  b.onclick = () => { haptic('pick'); picks[side].ability = key; paintPicker(); };
   abBox.append(b);
 }
 const otherOf = (s) => picks[s === 'a' ? 'b' : 'a'];
@@ -157,7 +160,7 @@ function paintPicker() {
 function openPicker(s) { side = s; paintPicker(); show('picker'); }
 $('bBack').onclick = () => { haptic(); show('lobby'); };
 $('bDice1').onclick = () => {
-  haptic();
+  haptic('pick');
   const other = otherOf(side).color, ok = Object.keys(COLORS).filter((c) => !tooClose(c, other));
   picks[side] = { color: ok[Math.floor(Math.random() * ok.length)], ability: rndAbility() };
   paintPicker();
@@ -179,11 +182,13 @@ function stopAudio() { try { src?.stop(); } catch { /* 이미 멈춤 */ } src = 
 // 소리 합성은 worker에서. worker를 못 쓰면 화면 스레드에서 한 번 만든다
 let audioWorker = null, reqId = 0, busy = false, queued = null; // 빠르게 넘기면 마지막 판 것만 만든다
 const waiting = new Map();
-const send = (c) => { busy = true; const id = ++reqId; waiting.set(id, c); audioWorker.postMessage({ id, log: c.prep.log, duration: c.prep.duration, seed: hash(c.params.seed) }); };
+const send = (c) => { busy = true; const id = ++reqId; waiting.set(id, c); audioWorker.postMessage({ id, log: c.prep.log, duration: c.prep.duration, seed: hash(c.params.seed), musicOffset: c.offset }); };
 try {
   audioWorker = new Worker(new URL('./audio-worker.js', import.meta.url), { type: 'module' });
   audioWorker.onmessage = (e) => {
-    const c = waiting.get(e.data.id); waiting.delete(e.data.id); busy = false;
+    const c = waiting.get(e.data.id); waiting.delete(e.data.id);
+    if (c?.lobby) { if (e.data.error) { console.error('[colorwar] lobby audio', e.data.error); lobby.pending = false; } else gotLobby(e.data.pcm); return; }
+    busy = false;
     if (queued) { const q = queued; queued = null; if (q === cur) send(q); else q.pcmPending = false; }
     if (!c) return;
     if (e.data.error) { console.error('[colorwar] audio worker', e.data.error); return; }
@@ -197,7 +202,7 @@ function requestPcm(c) {
   c.pcmPending = true;
   const seed = hash(c.params.seed);
   if (audioWorker) { if (busy) { if (queued) queued.pcmPending = false; queued = c; } else send(c); return; }
-  setTimeout(() => { try { c.pcm = renderAudio(c.prep.log, c.prep.duration, seed); if (cur === c && !clk.pausedAt) startAudio(); } catch (e) { console.error('[colorwar] audio', e?.message || e); } }, 50);
+  setTimeout(() => { try { c.pcm = renderAudio(c.prep.log, c.prep.duration, seed, { musicOffset: c.offset }); if (cur === c && !clk.pausedAt) startAudio(); } catch (e) { console.error('[colorwar] audio', e?.message || e); } }, 50);
 }
 function startAudio() {
   stopAudio();
@@ -211,14 +216,82 @@ function startAudio() {
     src.start(actx.currentTime + 0.02, t + 0.02);
   } catch (e) { console.error('[colorwar] audio', e?.message || e); src = null; } // 소리만 빠지고 대결은 계속
 }
+// ---- 대결 밖 소리(ui-audio.js): 메인 화면 배경음, 랜덤 대결 소개 곡, 누름 소리. 모두 소리 설정·무음 스위치를 따른다 ----
+// 메인 배경음: 대결 화면이 아닐 때(처음 화면·고르기·설정) 반복. 처음 한 번 worker에서 만든다
+const lobby = { pcm: null, buf: null, pending: false, src: null, gain: null };
+function gotLobby(pcm) { lobby.pcm = pcm; lobby.pending = false; startLobby(); }
+function startLobby() {
+  if (!prefs.sound || !actx || !unlocked || screen === 'play' || document.hidden || lobby.src) return;
+  if (!lobby.pcm) {
+    if (lobby.pending) return;
+    lobby.pending = true;
+    if (audioWorker) { const id = ++reqId; waiting.set(id, { lobby: true }); audioWorker.postMessage({ id, kind: 'lobby' }); }
+    else setTimeout(() => { try { gotLobby(renderLobby()); } catch (e) { lobby.pending = false; console.error('[colorwar] lobby audio', e?.message || e); } }, 50);
+    return;
+  }
+  try {
+    actx.resume?.().catch(() => {}); // 대결 메뉴·앱 전환에서 멈춰 둔 오디오를 다시 켠다
+    if (!lobby.buf) { lobby.buf = actx.createBuffer(1, lobby.pcm.length, SAMPLE_RATE); lobby.buf.copyToChannel(lobby.pcm, 0); }
+    const g = actx.createGain(), at = actx.currentTime + 0.02;
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(1, at + 0.6); g.connect(actx.destination);
+    const s = actx.createBufferSource(); s.buffer = lobby.buf; s.loop = true; s.connect(g); s.start(at);
+    lobby.src = s; lobby.gain = g;
+  } catch (e) { console.error('[colorwar] lobby audio', e?.message || e); lobby.src = null; }
+}
+function stopLobby() {
+  const { src, gain } = lobby;
+  if (!src) return;
+  lobby.src = null;
+  try { const t = actx.currentTime; gain.gain.cancelScheduledValues(t); gain.gain.setValueAtTime(gain.gain.value, t); gain.gain.linearRampToValueAtTime(0, t + 0.25); src.stop(t + 0.3); } catch { /* 이미 멈춤 */ }
+}
+// 소개 곡: 그 판 곡의 첫 2.5초. 대결 소리는 곡의 2.5초 지점부터 이어 튼다(cur.offset). 소개 화면이 뜬 때에 박자를 맞춘다
+let introSnd = null;
+function playIntroSound() {
+  stopIntroSound();
+  if (!prefs.sound || !actx || !cur) return;
+  try {
+    actx.resume?.().catch(() => {});
+    const pcm = renderIntro(hash(cur.params.seed)), buf = actx.createBuffer(1, pcm.length, SAMPLE_RATE); buf.copyToChannel(pcm, 0);
+    const g = actx.createGain(); g.connect(actx.destination);
+    const s = actx.createBufferSource(); s.buffer = buf; s.connect(g);
+    s.start(actx.currentTime + 0.02, Math.min(buf.duration - 0.05, wall() - introStart + 0.02)); // 곡을 만드는 동안 흐른 시간만큼 건너뛴다
+    introSnd = { s, g };
+  } catch (e) { console.error('[colorwar] intro audio', e?.message || e); introSnd = null; }
+}
+function stopIntroSound() {
+  if (!introSnd) return;
+  const { s, g } = introSnd; introSnd = null;
+  try { const t = actx.currentTime; g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.08); s.stop(t + 0.1); } catch { /* 이미 멈춤 */ }
+}
+// 누름 소리: 종류마다 5음 중 직전과 다른 음
+let tapBufs = null;
+const tapLast = { tap: 0, pick: 0, go: 0 };
+function tapSound(kind) {
+  if (!prefs.sound || !actx || document.hidden) return;
+  try {
+    if (actx.state === 'suspended') actx.resume?.().catch(() => {}); // 대결 메뉴에서도 들리게(대결 소리는 메뉴를 열 때 이미 멈춤)
+    if (!tapBufs) {
+      tapBufs = {};
+      for (const k of ['tap', 'pick', 'go']) tapBufs[k] = Array.from({ length: TAP_VARIANTS }, (_, v) => { const p = renderTap(k, v), b = actx.createBuffer(1, p.length, SAMPLE_RATE); b.copyToChannel(p, 0); return b; });
+    }
+    const k = tapBufs[kind] ? kind : 'tap', i = (tapLast[k] = (tapLast[k] + 1 + Math.floor(Math.random() * (TAP_VARIANTS - 1))) % TAP_VARIANTS);
+    const s = actx.createBufferSource(); s.buffer = tapBufs[k][i]; s.connect(actx.destination); s.start();
+  } catch { /* 소리만 빠진다 */ }
+}
 // iOS는 첫 터치 뒤에만 소리를 낼 수 있다
-document.addEventListener('pointerdown', () => {
-  if (unlocked || actx) return;
-  try { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.resume().then(() => { unlocked = true; if (screen === 'play' && !clk.pausedAt) startAudio(); }).catch(() => {}); } catch { /* 소리 없이 계속 */ }
-}, true);
+// 앱(WKWebView)은 Capacitor가 자동 재생을 허용해(mediaTypesRequiringUserActionForPlayback = []) 켜자마자 소리를 낼 수 있다
+function unlockAudio() {
+  if (unlocked) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    actx.resume().then(() => { if (unlocked || actx.state !== 'running') return; unlocked = true; if (screen === 'play') { if (!clk.pausedAt) startAudio(); } else startLobby(); }).catch(() => {});
+  } catch { /* 소리 없이 계속 */ }
+}
+document.addEventListener('pointerdown', unlockAudio, true);
+if (window.Capacitor?.isNativePlatform?.()) unlockAudio();
 document.addEventListener('visibilitychange', () => {
   clk.hidden = document.hidden;
-  if (document.hidden) { pauseClock(); stopAudio(); } else { resumeClock(); if (screen === 'play' && !clk.pausedAt) startAudio(); }
+  if (document.hidden) { pauseClock(); stopAudio(); stopIntroSound(); stopLobby(); } else { resumeClock(); if (screen === 'play') { if (!clk.pausedAt) startAudio(); } else startLobby(); }
 });
 
 let mode = 'random';
@@ -228,21 +301,21 @@ function startPlay(params, m) {
   stopAudio();
   let prep;
   const layout = layoutFor();
-  try { prep = prepare({ ...params, dims: layout === 'desk' ? [403, 313] : undefined }); cur = { params, prep, sess: makeSession(prep, canvas, { footer: '', layout, theme: prefs.theme }), pcm: null }; } catch (e) { recover(e); return; }
+  try { prep = prepare({ ...params, dims: layout === 'desk' ? [403, 313] : undefined }); cur = { params, prep, sess: makeSession(prep, canvas, { footer: '', layout, theme: prefs.theme }), pcm: null, offset: m === 'random' ? INTRO_SEC : 0 }; } catch (e) { recover(e); return; }
   // 랜덤 대결은 소개가 처음부터 다 보이게 대결 화면을 흐려지는 전환 없이 바로 띄운다
   if (m === 'random') { const pl = $('play'); pl.classList.add('instant'); requestAnimationFrame(() => requestAnimationFrame(() => pl.classList.remove('instant'))); }
   show('play'); placeMenuBtn();
   clk.t0 = wall(); clk.paused = 0; clk.pausedAt = 0;
   endIntro(false);
   // 랜덤 대결은 누가 누구와 싸우는지 잠깐 보여 준 뒤 시계를 푼다(그동안 소리를 미리 만든다)
-  if (m === 'random') { clk.intro = true; showIntro(); }
+  if (m === 'random') { clk.intro = true; showIntro(); playIntroSound(); }
   if (clk.manual || clk.hidden || clk.intro) clk.pausedAt = clk.t0;
   dirty = true;
   if (prefs.sound) requestPcm(cur);
   if (!clk.pausedAt) startAudio();
 }
 const INTRO_MS = 2500;
-let introTimer = 0;
+let introTimer = 0, introStart = 0;
 function showIntro() {
   for (const side of ['a', 'b']) {
     const el = document.querySelector(`#intro .who.${side}`), s = picks[side];
@@ -259,12 +332,15 @@ function showIntro() {
     b.style.lineHeight = `${px}px`; // 줄 높이는 원래 크기로 고정해 두 카드 높이를 같게 둔다
     while (b.scrollWidth > max && px > 14) { px -= 2; b.style.fontSize = `${px}px`; }
   });
-  introTimer = setTimeout(() => endIntro(true), INTRO_MS);
+  introStart = wall();
+  introTimer = setTimeout(() => { introTimer = 0; endIntro(true); }, INTRO_MS);
 }
 // go: 소개를 끝내고 대결을 시작한다(false면 덮개만 치운다)
 function endIntro(go) {
+  const early = !!introTimer; // 2.5초를 다 채우지 않고 끝냄(눌러서 넘김·홈·오류)
   clearTimeout(introTimer); introTimer = 0;
   $('intro').hidden = true;
+  if (early) stopIntroSound(); // 다 채우면 소개 곡의 끝 울림은 대결 소리 위로 자연히 사라지게 둔다
   if (!clk.intro) return;
   clk.intro = false;
   if (go) { resumeClock(); if (!clk.pausedAt) startAudio(); }
@@ -278,7 +354,7 @@ function closeMenu() { $('menu').hidden = true; clk.manual = false; resumeClock(
 $('bMenu').onclick = () => { haptic(); openMenu(); };
 $('bResume').onclick = () => { haptic(); closeMenu(); };
 $('menu').addEventListener('click', (e) => { if (e.target.id === 'menu') { haptic(); closeMenu(); } });
-$('bNext').onclick = () => { haptic(); $('menu').hidden = true; clk.manual = false; next(); };
+$('bNext').onclick = () => { haptic('go'); $('menu').hidden = true; clk.manual = false; next(); };
 $('bHome').onclick = () => { haptic(); $('menu').hidden = true; clk.manual = false; clearTimeout(nextTimer); nextTimer = 0; endIntro(false); stopAudio(); pauseClock(); show('lobby'); };
 $('bHaptic2').onclick = () => { prefs.haptic = !prefs.haptic; savePrefs(); haptic(); paintLobby(); };
 

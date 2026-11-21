@@ -5,8 +5,8 @@ const cap = window.Capacitor;
 const native = !!cap?.isNativePlatform?.();
 
 // AdMob: 앱 ID ca-app-pub-6152195213210818~8258449645(Info.plist), 배너 단위 'Play screen banner'.
-// 개발 중에는 Google 시험 배너를 쓴다(실제 단위를 개발 중에 누르면 무효 트래픽). 출시 빌드 직전에만 RELEASE = true.
-const RELEASE = false;
+// 개발 중에는 Google 시험 배너를 쓴다(실제 단위를 개발 중에 누르면 무효 트래픽).
+const RELEASE = false; // 원본은 늘 false. 출시 빌드는 RELEASE=1 npm run app 이 www/ 사본만 true로 바꾼다
 export const AD = RELEASE
   ? { banner: 'ca-app-pub-6152195213210818/9220177523', testing: false }
   : { banner: 'ca-app-pub-3940256099942544/2934735716', testing: true };

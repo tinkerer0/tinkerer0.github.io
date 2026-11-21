@@ -21,7 +21,7 @@ export const TRACKS = [
 export const trackFor = (seed) => TRACKS[(seed >>> 0) % TRACKS.length];
 
 export function renderAudio(log, duration, seed = 1, opts = {}) {
-  const n = Math.ceil(duration * SR);
+  const n = Math.ceil((duration + (opts.ring || 0)) * SR); // ring: duration 뒤로 소리 꼬리만 더 남긴다(새 음은 duration 안에서만)
   const out = new Float32Array(n);
   const tr = opts.track ? TRACKS.find((x) => x.name === opts.track) : trackFor(seed);
   let rs = (seed * 2654435761) >>> 0 || 1;
@@ -50,10 +50,12 @@ export function renderAudio(log, duration, seed = 1, opts = {}) {
   const lead = (t0, len, m, g) => { const f = midi(m), v = LEAD[tr.lead]; add(t0, len, (t, k) => v(f, t, k), g); };
 
   // 곡: 16분 칸 단위. 처음엔 드럼·베이스, 8초부터 멜로디, 시간이 갈수록 하이햇이 촘촘해진다
-  const step = 60 / tr.bpm / 4, sw = tr.swing || 0;
+  // musicOffset: 곡을 그만큼 앞에서 이미 시작한 것으로 친다(랜덤 대결 소개 동안 곡의 앞부분을 먼저 틀고, 대결은 그 뒤부터 이어 튼다)
+  const step = 60 / tr.bpm / 4, sw = tr.swing || 0, off = opts.musicOffset || 0;
   const at = (i) => i * step + (i % 2 ? sw * step : 0);
-  for (let i = 0; opts.music !== false && at(i) < duration; i++) {
-    const t = at(i), c = i % 16, bar = Math.floor(i / 16), heat = Math.min(1, t / 30), pr = tr.prog[bar % tr.prog.length];
+  for (let i = 0; opts.music !== false && at(i) - off < duration; i++) {
+    if (at(i) < off) continue;
+    const mt = at(i), t = mt - off, c = i % 16, bar = Math.floor(i / 16), heat = Math.min(1, mt / 30), pr = tr.prog[bar % tr.prog.length];
     if (tr.kick[c] !== '.') kick(t, tr.kick[c] === 'x' ? 0.75 : 0.45);
     if (tr.clap[c] !== '.') clap(t, tr.clap[c] === 'x' ? 0.18 : 0.08);
     if (tr.hat[c] !== '.') hat(t, (tr.hat[c] === 'x' ? 0.07 : 0.05) + 0.04 * heat, tr.hat[c] === 'o' ? 0.12 : 0.045);

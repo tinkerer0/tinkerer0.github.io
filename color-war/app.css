@@ -131,6 +131,13 @@ svg { fill: currentColor; }
   html { display: grid; place-items: center; background: #1b1b22; }
   body { width: 390px; height: 844px; flex: none; position: relative; border-radius: 48px; overflow: hidden; box-shadow: 0 0 0 10px #000, 0 0 0 12px #3a3a44;
     transform: scale(var(--fit, 1)); transform-origin: center; }
+  /* 소개 화면은 vw·vh로 크기를 잡아 틀 밖 창 크기를 따라가 깨진다 → 틀(390×844)에서의 값으로 고정. 웹판(html.web)은 틀이 없어 그대로 */
+  html:not(.web) #intro { --vs: 85.8px; --vsgap: calc(var(--vs) / 2 + 15.2px); }
+  html:not(.web) #intro .who { width: 312px; gap: 10px; padding: 20px 15.6px; }
+  html:not(.web) #intro .who canvas { width: 117px; height: 117px; }
+  html:not(.web) #intro .who div { gap: 5px; }
+  html:not(.web) #intro .who b { font-size: 50.7px; }
+  html:not(.web) #intro .who small { font-size: 23.4px; }
 }
 @media (max-height: 700px) { #bRandom { width: 84px; height: 84px; } .side canvas { width: 100px; height: 100px; } #mark { height: 44px; } }
 @media (prefers-reduced-motion: reduce) { button:active { transform: none; } .screen[hidden], .sheet[hidden] { transform: none; } .sheet, .sheet[hidden] { transition: opacity .2s, visibility 0s .2s; } .sheet[hidden] { opacity: 0; } #loading s { animation: none; width: 100%; } }
